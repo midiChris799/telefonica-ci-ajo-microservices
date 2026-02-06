@@ -1,0 +1,153 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use utf8;
+
+use JSON::PP qw(decode_json);
+use File::Spec;
+use File::Path qw(make_path);
+use File::Basename qw(basename);
+use File::Copy qw(move);
+use Getopt::Long qw(GetOptions);
+use POSIX qw(strftime);
+
+my $input_dir  = 'input';
+my $done_dir   = 'Done';
+my $archive_dir = 'Archive';
+my $output_csv = 'output.csv';
+my $help;
+
+GetOptions(
+    'input|i=s'   => \$input_dir,
+    'done|d=s'    => \$done_dir,
+    'archive|a=s' => \$archive_dir,
+    'output|o=s'  => \$output_csv,
+    'help|h'      => \$help,
+) or usage();
+
+usage() if $help;
+
+-d $input_dir or die "Input directory '$input_dir' does not exist.\n";
+
+my @json_files = sort grep { -f $_ } glob(File::Spec->catfile($input_dir, '*.json'));
+if (!@json_files) {
+    print "No JSON files found in '$input_dir'.\n";
+    exit 0;
+}
+
+my @rows;
+my %all_keys;
+
+for my $file (@json_files) {
+    open my $fh, '<:encoding(UTF-8)', $file
+      or die "Could not open '$file': $!\n";
+    local $/;
+    my $json_text = <$fh>;
+    close $fh;
+
+    my $decoded = eval { decode_json($json_text) };
+    if ($@) {
+        warn "Skipping invalid JSON '$file': $@\n";
+        next;
+    }
+
+    if (ref $decoded eq 'ARRAY') {
+        for my $entry (@$decoded) {
+            next unless ref $entry eq 'HASH';
+            push @rows, $entry;
+            $all_keys{$_} = 1 for keys %$entry;
+        }
+    }
+    elsif (ref $decoded eq 'HASH') {
+        push @rows, $decoded;
+        $all_keys{$_} = 1 for keys %$decoded;
+    }
+    else {
+        warn "Skipping unsupported JSON structure in '$file'.\n";
+    }
+}
+
+if (!@rows) {
+    print "No valid JSON objects found for CSV export.\n";
+    exit 0;
+}
+
+my @header = sort keys %all_keys;
+
+open my $out, '>:encoding(UTF-8)', $output_csv
+  or die "Could not write '$output_csv': $!\n";
+
+print $out join(',', map { csv_escape($_) } @header), "\n";
+for my $row (@rows) {
+    my @values = map { normalize_value($row->{$_}) } @header;
+    print $out join(',', map { csv_escape($_) } @values), "\n";
+}
+close $out;
+
+print "CSV created: $output_csv\n";
+
+# Neue Funktionalität: Done-Verzeichnis nach Archive verschieben.
+archive_done_directory($done_dir, $archive_dir);
+
+sub archive_done_directory {
+    my ($done_directory, $archive_root) = @_;
+
+    unless (-d $done_directory) {
+        print "Done directory '$done_directory' not found, skipping archive step.\n";
+        return;
+    }
+
+    make_path($archive_root) unless -d $archive_root;
+
+    my $timestamp = strftime('%Y%m%d_%H%M%S', localtime);
+    my $target = File::Spec->catdir($archive_root, basename($done_directory) . "_$timestamp");
+
+    if (-e $target) {
+        my $suffix = 1;
+        my $base_target = $target;
+        $target = $base_target . "_$suffix" while -e $target && ++$suffix;
+    }
+
+    move($done_directory, $target)
+      or die "Could not archive done directory '$done_directory' to '$target': $!\n";
+
+    make_path($done_directory)
+      or die "Could not recreate done directory '$done_directory': $!\n";
+
+    print "Done directory archived to: $target\n";
+    print "Done directory recreated: $done_directory\n";
+}
+
+sub normalize_value {
+    my ($value) = @_;
+    return '' unless defined $value;
+
+    if (ref $value eq 'ARRAY' || ref $value eq 'HASH') {
+        require JSON::PP;
+        return JSON::PP::encode_json($value);
+    }
+
+    return $value;
+}
+
+
+sub csv_escape {
+    my ($value) = @_;
+    $value = '' unless defined $value;
+    $value =~ s/"/""/g;
+    return '"' . $value . '"';
+}
+
+sub usage {
+    print <<'USAGE';
+Usage: perl json_dir_to_csv_v2 [options]
+
+Options:
+  -i, --input <dir>      JSON input directory (default: input)
+  -d, --done <dir>       Done directory to archive (default: Done)
+  -a, --archive <dir>    Archive directory (default: Archive)
+  -o, --output <file>    Output CSV file (default: output.csv)
+  -h, --help             Show this help
+USAGE
+    exit 0;
+}
