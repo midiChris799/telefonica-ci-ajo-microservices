@@ -23,6 +23,15 @@ Dieser Microservice stellt Helper-Endpunkte bereit. Aktuell ist ein Helper für 
 }
 ```
 
+## Swagger / OpenAPI
+
+Nach dem Start der Anwendung sind folgende URLs verfügbar:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/api-docs`
+
+Damit kannst du die Endpunkte direkt im Browser testen.
+
 ## Unterstützte Eingabeformate
 
 - `yyyy-MM-dd`

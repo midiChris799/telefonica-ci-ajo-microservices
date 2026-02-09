@@ -3,6 +3,12 @@ package com.telefonica.helperservice.controller;
 import com.telefonica.helperservice.dto.DateConversionRequest;
 import com.telefonica.helperservice.dto.DateConversionResponse;
 import com.telefonica.helperservice.service.DateConversionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -25,6 +31,11 @@ public class HelperController {
         this.dateConversionService = dateConversionService;
     }
 
+    @Operation(summary = "Datum in deutsches Format umwandeln")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Datum erfolgreich umgewandelt"),
+            @ApiResponse(responseCode = "400", description = "Ungültige Eingabe", content = @Content(mediaType = "application/json", schema = @Schema(implementation = Map.class), examples = @ExampleObject(value = "{\"error\":\"Ungültiges Datumsformat\",\"detail\":\"Erlaubt sind z. B. 2026-02-09, 09.02.2026 oder ISO-Datetime\"}")))
+    })
     @PostMapping("/date/german")
     public DateConversionResponse convertToGermanDate(@Valid @RequestBody DateConversionRequest request) {
         String germanDate = dateConversionService.toGermanDate(request.dateValue());
